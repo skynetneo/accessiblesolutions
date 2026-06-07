@@ -1,0 +1,7 @@
+allowBuilds:
+  '@scarf/scarf': true
+  '@tsparticles/engine': true
+  msw: true
+  sharp: true
+  supabase: true
+  unrs-resolver: true

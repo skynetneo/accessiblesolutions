@@ -1,0 +1,400 @@
+@import 'tailwindcss';
+
+/* Define dark mode variant for Tailwind v4 */
+@custom-variant dark (&:is(.dark *));
+
+/* 1. ROOT VARIABLES */
+:root {
+  /* Off-black purple background */
+  --background: oklch(0.12 0.02 280);
+  --foreground: oklch(0.95 0.01 280);
+
+  /* Card surfaces - slightly lighter purple */
+  --card: oklch(0.16 0.025 280);
+  --card-foreground: oklch(0.95 0.01 280);
+
+  --popover: oklch(0.14 0.02 280);
+  --popover-foreground: oklch(0.95 0.01 280);
+
+  /* Primary - Electric blue */
+  --primary: oklch(0.65 0.2 250);
+  --primary-foreground: oklch(0.98 0 0);
+
+  /* Secondary - Soft purple */
+  --secondary: oklch(0.22 0.04 280);
+  --secondary-foreground: oklch(0.9 0.01 280);
+
+  /* Muted - Darker purple-gray */
+  --muted: oklch(0.2 0.03 280);
+  --muted-foreground: oklch(0.65 0.02 280);
+
+  /* Accent - Hot pink/magenta */
+  --accent: oklch(0.7 0.22 330);
+  --accent-foreground: oklch(0.98 0 0);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  /* Borders - Subtle purple */
+  --border: oklch(0.28 0.04 280);
+  --input: oklch(0.22 0.03 280);
+  --ring: oklch(0.65 0.2 250);
+
+  /* Charts - Vibrant palette */
+  --chart-1: oklch(0.65 0.2 250);
+  --chart-2: oklch(0.7 0.22 330);
+  --chart-3: oklch(0.7 0.18 180);
+  --chart-4: oklch(0.75 0.15 60);
+  --chart-5: oklch(0.6 0.2 300);
+
+  --radius: 0.75rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.1 0.02 280);
+  --sidebar-foreground: oklch(0.95 0.01 280);
+  --sidebar-primary: oklch(0.65 0.2 250);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.18 0.03 280);
+  --sidebar-accent-foreground: oklch(0.9 0.01 280);
+  --sidebar-border: oklch(0.25 0.03 280);
+  --sidebar-ring: oklch(0.65 0.2 250);
+
+  /* Compatibility aliases for shared components outside the learn app. */
+  --color-bg: var(--background);
+  --color-bg-card: color-mix(in oklch, var(--card) 82%, transparent);
+  --color-bg-sidebar: var(--sidebar);
+  --color-bg-chat: var(--popover);
+  --color-bg-glass: color-mix(in oklch, var(--card) 65%, transparent);
+  --color-text: var(--foreground);
+  --color-text-secondary: var(--secondary-foreground);
+  --color-text-muted: var(--muted-foreground);
+  --color-accent: var(--primary);
+  --color-accent-rgb: 0, 146, 251;
+  --color-accent-soft: color-mix(in oklch, var(--primary) 14%, transparent);
+  --color-success: oklch(0.7 0.18 180);
+  --color-success-soft: color-mix(in oklch, oklch(0.7 0.18 180) 12%, transparent);
+  --color-warn: oklch(0.75 0.15 60);
+  --color-warn-soft: color-mix(in oklch, oklch(0.75 0.15 60) 12%, transparent);
+  --color-info: var(--primary);
+  --color-info-soft: color-mix(in oklch, var(--primary) 12%, transparent);
+  --color-border: var(--border);
+  --color-border-active: var(--primary);
+  --color-xp: var(--primary);
+  --color-streak: oklch(0.75 0.15 60);
+  --color-mastery: oklch(0.7 0.18 180);
+  --glass-surface: color-mix(in oklch, var(--card) 76%, transparent);
+  --glass-surface-hover: color-mix(in oklch, var(--card) 90%, transparent);
+  --glass-border: 1px solid var(--border);
+  --glass-blur: 16px;
+  --shadow-card: 0 10px 30px rgb(0 0 0 / 0.25);
+  --shadow-elevated: 0 24px 70px rgb(0 0 0 / 0.4);
+  --shadow-glow: 0 0 24px color-mix(in oklch, var(--primary) 18%, transparent);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
+}
+
+/* Light mode override */
+.light {
+  --background: oklch(0.98 0.005 280);
+  --foreground: oklch(0.15 0.02 280);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.02 280);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.02 280);
+  --primary: oklch(0.5 0.2 250);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.95 0.01 280);
+  --secondary-foreground: oklch(0.2 0.02 280);
+  --muted: oklch(0.95 0.01 280);
+  --muted-foreground: oklch(0.45 0.02 280);
+  --accent: oklch(0.6 0.22 330);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.9 0.01 280);
+  --input: oklch(0.9 0.01 280);
+  --ring: oklch(0.5 0.2 250);
+  --sidebar: oklch(0.97 0.005 280);
+  --sidebar-foreground: oklch(0.15 0.02 280);
+  --sidebar-primary: oklch(0.5 0.2 250);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.95 0.01 280);
+  --sidebar-accent-foreground: oklch(0.2 0.02 280);
+  --sidebar-border: oklch(0.9 0.01 280);
+  --sidebar-ring: oklch(0.5 0.2 250);
+
+  --color-bg: var(--background);
+  --color-bg-card: color-mix(in oklch, var(--card) 88%, transparent);
+  --color-bg-sidebar: var(--sidebar);
+  --color-bg-chat: var(--popover);
+  --color-bg-glass: color-mix(in oklch, var(--card) 72%, transparent);
+  --color-text: var(--foreground);
+  --color-text-secondary: var(--secondary-foreground);
+  --color-text-muted: var(--muted-foreground);
+  --color-accent: var(--primary);
+  --color-accent-rgb: 0, 101, 180;
+  --color-accent-soft: color-mix(in oklch, var(--primary) 10%, transparent);
+  --color-border: var(--border);
+  --color-border-active: var(--primary);
+  --glass-surface: color-mix(in oklch, var(--card) 82%, transparent);
+  --glass-surface-hover: var(--card);
+  --shadow-card: 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-elevated: 0 18px 50px rgb(0 0 0 / 0.12);
+  --shadow-glow: 0 0 24px color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+/* 2. TAILWIND V4 THEME CONFIGURATION */
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback', sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Animation tokens */
+  --animate-meteor-effect: meteor-effect 5s linear infinite;
+  --animate-scroll: scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite;
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
+  --animate-neon-spin: neon-spin 3.75s linear infinite;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* 3. KEYFRAMES */
+@keyframes meteor-effect {
+  0% { transform: rotate(45deg) translateX(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: rotate(45deg) translateX(-500px); opacity: 0; }
+}
+
+@keyframes scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-50% - 0.5rem)); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes neon-spin {
+  to { transform: rotate(1turn); }
+}
+
+/* 4. COPILOTKIT CUSTOMIZATION */
+.copilotkit-popup-root {
+  --copilot-kit-primary-color: oklch(0.65 0.2 250);
+  --copilot-kit-contrast-color: oklch(0.98 0 0);
+  --copilot-kit-background-color: oklch(0.14 0.02 280);
+  --copilot-kit-secondary-color: oklch(0.22 0.04 280);
+  --copilot-kit-separator-color: oklch(0.28 0.04 280);
+  --copilot-kit-muted-color: oklch(0.65 0.02 280);
+  --copilot-kit-response-button-background-color: oklch(0.18 0.03 280);
+  --copilot-kit-response-button-color: oklch(0.95 0.01 280);
+}
+
+[data-copilotkit-popup] {
+  border-radius: 1rem !important;
+  border: 1px solid oklch(0.28 0.04 280) !important;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5) !important;
+}
+
+/* Hide "Powered by CopilotKit" branding if desired */
+.copilot-kit-branding {
+  display: none !important;
+}
+
+/* 5. LAYOUT WIDTH TUNING */
+@media (min-width: 1280px) {
+  /* Widen common content wrappers so desktop pages do not feel overly centered. */
+  .max-w-7xl {
+    max-width: min(112rem, calc(100vw - 3rem));
+  }
+
+  .max-w-6xl {
+    max-width: min(104rem, calc(100vw - 3rem));
+  }
+
+  .max-w-5xl {
+    max-width: min(96rem, calc(100vw - 3rem));
+  }
+}
+
+/* 6. CUSTOM MAP PIN STYLES (Used in MapCanvas) */
+.neon-ring {
+  position: relative;
+  --neon-radius: 1rem;
+  --neon-padding: 1px;
+  --neon-opacity: 0.55;
+  --neon-anim: none;
+}
+
+.neon-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: var(--neon-padding);
+  border-radius: var(--neon-radius);
+  background: conic-gradient(
+    from 180deg,
+    color-mix(in oklch, var(--primary) 70%, transparent),
+    color-mix(in oklch, var(--accent) 70%, transparent),
+    color-mix(in oklch, var(--primary) 70%, transparent)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: var(--neon-opacity);
+  transform-origin: 50% 50%;
+  animation: var(--neon-anim);
+}
+
+.neon-ring--round { --neon-radius: 9999px; }
+.neon-ring--spin { --neon-anim: var(--animate-neon-spin); }
+
+.leaflet-div-icon.map-pin {
+  background: transparent;
+  border: none;
+}
+
+.map-pin {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  transform: translateZ(0);
+  isolation: isolate;
+}
+
+.map-pin__core {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: color-mix(in oklch, var(--card) 85%, black);
+  color: var(--foreground);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  transition: transform 160ms ease, filter 160ms ease;
+  z-index: 1;
+}
+
+.map-pin:hover .map-pin__core {
+  transform: translateY(-1px) scale(1.08);
+  filter: brightness(1.08);
+}
+
+.map-pin--selected .map-pin__core {
+  transform: translateY(-1px) scale(1.18);
+  filter: brightness(1.06);
+}
+
+.map-pin--selected::before,
+.map-pin--selected::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 0;
+  background: conic-gradient(
+    from 180deg,
+    color-mix(in oklch, var(--primary) 75%, transparent),
+    color-mix(in oklch, var(--accent) 75%, transparent),
+    color-mix(in oklch, var(--primary) 75%, transparent)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  opacity: 0.7;
+  transform-origin: 50% 50%;
+  animation: var(--animate-neon-spin);
+}
+
+.map-pin--selected::after {
+  inset: -10px;
+  opacity: 0.35;
+  filter: blur(6px);
+  padding: 2px;
+}
+
+/* 6. LEAFLET POPUP OVERRIDES (Crucial for dark mode cards) */
+.leaflet-popup-content-wrapper {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  width: 320px !important;
+}
+
+.leaflet-popup-tip {
+  /* Using the card background so the arrow matches the dark card */
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* Fix stacking context */
+.leaflet-top, .leaflet-bottom {
+  z-index: 400 !important;
+}

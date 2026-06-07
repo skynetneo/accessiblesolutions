@@ -1,0 +1,18 @@
+{
+  "venvPath": "back",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {
+      "root": "back",
+      "extraPaths": [
+        "back"
+      ]
+    },
+    {
+      "root": "agent",
+      "extraPaths": [
+        "agent"
+      ]
+    }
+  ]
+}
