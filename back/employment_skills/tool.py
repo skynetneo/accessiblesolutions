@@ -17,6 +17,9 @@ def update_competency_observation(
     Called by stealth assessment, never by the learner."""
     store = runtime.store
     user_id = runtime.context.learner_id
+
+    if store is None:
+        return "Store unavailable; observation not recorded."
     
     profile = store.get(("learners", "competencies"), user_id)
     data = profile.value if profile else {"competencies": {}, "priority_queue": []}

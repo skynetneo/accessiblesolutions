@@ -475,6 +475,94 @@ def save_resume_version(
     return f"Resume saved as {version_id}"
 
 
+@tool
+def search_jobs(
+    query: str,
+    location: str,
+    salary_min: int,
+    runtime: ToolRuntime[LearnerContext],
+    job_type: str = "any",
+) -> str:
+    """Search for job listings matching the learner's criteria.
+
+    Args:
+        query: Job title or keywords
+        location: City/state or "remote"
+        salary_min: Minimum yearly salary
+        job_type: "full_time", "part_time", "contract", or "any"
+    """
+    return (
+        f"[MOCK API RESPONSE] Found 3 matching jobs for '{query}' in {location} "
+        f"starting above ${salary_min}/yr. \n"
+        f"1. Junior {query} - ACME Corp - ${salary_min + 5000}/yr - "
+        "Skills needed: Communication, Excel\n"
+        f"2. Associate {query} - Globex - ${salary_min + 2000}/yr - "
+        "Skills needed: Project Management\n"
+        f"3. {query} Coordinator - Initech - ${salary_min + 10000}/yr - "
+        "Skills needed: Problem Solving, Logistics"
+    )
+
+
+@tool
+def analyze_job_fit(
+    job_description: str,
+    job_title: str,
+    runtime: ToolRuntime[LearnerContext],
+) -> str:
+    """Compare a job posting against the learner's actual profile.
+
+    Args:
+        job_description: The full job posting text
+        job_title: The job title
+    """
+    return (
+        f"Please proceed to analyze the '{job_title}' role using the profile data you hold. "
+        "Ensure your response calculates and clearly formats: \n"
+        "1. Existing skill matches (%)\n"
+        "2. Gaps (what's missing)\n"
+        "3. Estimated time to close gap\n"
+        "4. Bridge viability score (Pay Increase / Gap Size)"
+    )
+
+
+@tool
+def save_job_research(
+    research_summary: dict,
+    runtime: ToolRuntime[LearnerContext],
+) -> str:
+    """Save job research results for the learner to review later.
+
+    Args:
+        research_summary: Structured roles, gaps, and recommended actions
+    """
+    learner_id = runtime.context.learner_id
+    research_id = f"research_{int(time.time())}"
+    created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    payload = {
+        "learner_id": learner_id,
+        "research_id": research_id,
+        "research_summary": research_summary,
+        "created_at": created_at,
+    }
+
+    try:
+        db.client.table("job_research").insert(payload).execute()
+        return f"Research saved successfully as {research_id}."
+    except Exception:
+        store = getattr(runtime, "store", None)
+        if store is None:
+            return "Storage is unavailable; research was not saved."
+        store.put(
+            (learner_id, "job_research"),
+            research_id,
+            {
+                **research_summary,
+                "timestamp": time.time(),
+            },
+        )
+        return f"Research saved successfully as {research_id}."
+
+
 # ── Subagent definitions ──────────────────────────────────────
 
 resume_subagent = {
@@ -541,11 +629,20 @@ job_researcher_subagent = {
         "3. If open: search across industries for skill premium\n"
         "4. BRIDGE FORMULA: pay_increase / gap_size\n"
         "5. TIMELINE TIERS: NOW (0-1mo), SOON (timeline), STRETCH (2x)\n\n"
+        "For each search, call search_jobs. For promising postings, call "
+        "analyze_job_fit. Always call save_job_research with structured "
+        "findings before finishing.\n\n"
         "Be concrete: titles, salary ranges, requirements.\n"
         "Respect dealbreakers absolutely.\n"
     ),
     "model": JOB_RESEARCH_MODEL,
-    "tools": [get_work_profile, get_competency_data],
+    "tools": [
+        get_work_profile,
+        get_competency_data,
+        search_jobs,
+        analyze_job_fit,
+        save_job_research,
+    ],
 }
 
 

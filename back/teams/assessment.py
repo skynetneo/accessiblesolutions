@@ -575,7 +575,7 @@ def apply_assessment_config(
     """Dynamic configuration based on current_step."""
     step = request.state.get("current_step", "interest_harvest")
     config = ASSESSMENT_CONFIGS.get(step, ASSESSMENT_CONFIGS["interest_harvest"])
-    prompt = config["prompt"] + render_system_context(request.state)
+    prompt = config["prompt"] + render_system_context(cast(dict[str, Any], request.state))
     return handler(request.override(
         system_message=SystemMessage(content=prompt),
         tools=config["tools"],

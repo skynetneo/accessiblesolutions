@@ -28,7 +28,7 @@ import math
 import os
 import socket
 import time
-from typing import Annotated, Any, Dict, List, NotRequired, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 import sqlite3
 from dotenv import load_dotenv
 
@@ -52,19 +52,9 @@ if not hasattr(langchain_core.tools, "InjectedToolCallId"):
         None,
     )
 
-from langchain.tools import ToolRuntime, tool
-from langchain_core.tools import InjectedToolArg
-
-# Prefer the subagent-capable import used in AccessFyndr. Fall back for older code.
-try:
-    from deepagents.graph import create_deep_agent
-except ImportError:  # pragma: no cover - compatibility only
-    from deepagents import create_deep_agent  # type: ignore
-
 from deepagents.backends.state import StateBackend
-from deepagents.middleware.subagents import SubAgent
 
-from copilotkit import CopilotKitMiddleware, CopilotKitState, LangGraphAGUIAgent
+from copilotkit import CopilotKitMiddleware, LangGraphAGUIAgent
 from ag_ui_langgraph import add_langgraph_fastapi_endpoint
 
 try:
@@ -80,17 +70,10 @@ except ImportError:  # pragma: no cover - app can run without fallback web searc
 # Praxis imports
 from curriculum.skill_graph import SkillGraph
 from db.client import db, get_async_client
-from db.tools_bridge import LearnerContext
-from middleware.core import (
-    EmploymentStructuralMiddleware,
-    MicroThemingMiddleware,
-    StealthAssessmentMiddleware,
-    ZPDMiddleware,
-)
-from model_factory import DEFAULT_BASE_MODEL, init_praxis_chat_model
+from model_factory import DEFAULT_BASE_MODEL
 from orchestration.ikigai_engine import IkigaiEngine
-from orchestration.momentum import ItemType
-from orchestration.session_manager import SessionManager, SessionPhase
+from orchestration.session_manager import Session, SessionManager, SessionPhase
+from praxis_app import build_praxis_supervisor
 from teams.assessment import build_assessment_team
 from teams.coaching import build_coaching_team
 from teams.gamification import GamificationEngine
@@ -105,8 +88,6 @@ from tools import (
     navigate_to_page,
     recommend_assistance,
     save_agencies,
-    switch_career_view,
-    update_career_state,
 )
 
 
@@ -364,428 +345,30 @@ gamification_engine = GamificationEngine()
 
 web_search_tool = TavilySearch(max_results=3) if TavilySearch is not None else None
 
-
-# -----------------------------------------------------------------------------
-# Supervisor state
-# -----------------------------------------------------------------------------
-
-class SupervisorState(CopilotKitState):
-    # Career UI state
-    resume_markdown: NotRequired[Optional[str]]
-    cover_letter_markdown: NotRequired[Optional[str]]
-    job_listings: NotRequired[Optional[List[Dict[str, Any]]]]
-    career_view: NotRequired[Optional[str]]
-
-    # Fyndr UI state
-    found_agencies: NotRequired[Optional[List[Dict[str, Any]]]]
-    saved_agencies: NotRequired[Optional[List[Dict[str, Any]]]]
-    selected_agency_id: NotRequired[Optional[str]]
-
-    # Learning UI hints. Durable learning state remains in DB/session manager.
-    current_phase: NotRequired[Optional[str]]
-    lesson_progress: NotRequired[Optional[Dict[str, Any]]]
-
-    # Generic UI navigation, if navigate_to_page writes it.
-    current_page: NotRequired[Optional[str]]
-
-
-# -----------------------------------------------------------------------------
-# Learning tools
-# -----------------------------------------------------------------------------
-
-MISSING_LEARNER_CONTEXT_MESSAGE = (
-    "I need a learner session before I can personalize lessons or save progress. "
-    "Please log in or complete onboarding, then try again."
-)
-
-InjectedLearnerRuntime = Annotated[ToolRuntime[LearnerContext], InjectedToolArg]
-
-
-def _item_type_from_state(value: Any) -> ItemType:
-    try:
-        return ItemType(str(value or "target"))
-    except ValueError:
-        return ItemType.TARGET
-
-
-def _get_runtime_context(runtime: ToolRuntime[LearnerContext] | None) -> LearnerContext | None:
-    context = getattr(runtime, "context", None)
-    learner_id = getattr(context, "learner_id", None)
-    if isinstance(learner_id, str) and learner_id.strip():
-        return cast(LearnerContext, context)
-    return None
-
-
-@tool("start_learning_session")
-async def start_learning_session(runtime: InjectedLearnerRuntime) -> str:
-    """Initialize a learning session for the current learner."""
-    context = _get_runtime_context(runtime)
-    if context is None:
-        return MISSING_LEARNER_CONTEXT_MESSAGE
-
-    learner_id = context.learner_id
-    session_id = context.session_id
-
-    session = await session_manager.start_session(
-        learner_id=learner_id,
-        session_id=session_id,
-    )
-
-    if session.phase == SessionPhase.ONBOARDING:
-        return (
-            "NEW LEARNER detected. Start onboarding:\n"
-            "1. Welcome them warmly. This is not school; it is their personal path.\n"
-            "2. Ask what they are interested in for theming.\n"
-            "3. Ask how they like to learn: visual, reading, doing, audio, mixed.\n"
-            "4. Ask what brought them here: GED, job skills, both, or another goal.\n"
-            "5. Keep it under 5 minutes, then hand off to placement.\n"
-            "Use assessment_session with current_step='interest_harvest'."
-        )
-
-    if session.phase == SessionPhase.PLACEMENT:
-        return (
-            "Learner needs PLACEMENT assessment.\n"
-            "Use adaptive questions to estimate their skill level per subject.\n"
-            "Start with medium difficulty and adjust based on responses.\n"
-            "15 items max. Use assessment_session with current_step='placement'."
-        )
-
-    if session.phase == SessionPhase.LEARNING and session.lesson_plan:
-        plan = session.lesson_plan
-        next_item = session_manager.get_next_item_spec(session)
-        targets = [
-            f"  - {t['skill_id']} step {t['chain_step']} (level {t['prompt_level']})"
-            for t in plan.target_skills
-        ]
-        next_item_text = ""
-        if next_item:
-            next_item_text = (
-                "\nNext item spec: "
-                f"{next_item['skill_id']} step {next_item['chain_step']} "
-                f"({next_item['item_type']}, prompt level {next_item['prompt_level']})\n"
-            )
-        return (
-            "RETURNING LEARNER — session planned.\n"
-            "Phase: LEARNING\n"
-            f"Ratio: {plan.initial_ratio:.0%} mastered / {1 - plan.initial_ratio:.0%} target\n"
-            "Target skills:\n"
-            + "\n".join(targets)
-            + "\n"
-            f"Mastered pool: {len(plan.mastered_pool)} items\n"
-            f"Reviews due: {len(plan.review_items)} items\n"
-            f"Competency focus: {', '.join(plan.competency_focus)}\n"
-            f"Estimated items: {plan.estimated_items}\n"
-            f"Session length: {plan.estimated_duration_minutes} minutes\n\n"
-            f"{next_item_text}"
-            "Use coaching_session to begin teaching."
-        )
-
-    return "Session initialized. Ready to begin."
-
-
-@tool("coaching_session")
-async def run_coaching_session(
-    message: str,
-    current_step: str = "teaching",
-    *,
-    runtime: InjectedLearnerRuntime,
-) -> str:
-    """Run an interactive coaching interaction through the coaching team."""
-    context = _get_runtime_context(runtime)
-    if context is None:
-        return MISSING_LEARNER_CONTEXT_MESSAGE
-
-    learner_id = context.learner_id
-    session_id = context.session_id
-
-    result = await asyncio.to_thread(
-        lambda: cast(Any, coaching_team).invoke(
-            {
-                "messages": [{"role": "user", "content": message}],
-                "current_step": current_step,
-            },
-            config={"configurable": {"thread_id": f"coaching_{session_id}"}},
-            context=LearnerContext(learner_id=learner_id, session_id=session_id),
-        )
-    )
-
-    session = session_manager.get_active_session(
-        learner_id=learner_id,
-        session_id=session_id,
-    )
-    correct = result.get("last_response_correct")
-    if session is not None and isinstance(correct, bool):
-        await session_manager.advance(
-            session=session,
-            item_type=_item_type_from_state(result.get("last_item_type")),
-            correct=correct,
-        )
-
-    events = result.get("gamification_events", [])
-    if session is not None and isinstance(events, list):
-        new_events = events[session.gamification_events_processed :]
-        if new_events:
-            await gamification_engine.process_events(learner_id, new_events)
-            session.gamification_events_processed = len(events)
-
-    messages = result.get("messages", [])
-    if messages:
-        last = messages[-1]
-        return last.content if hasattr(last, "content") else str(last)
-    return "Coaching session active."
-
-
-@tool("assessment_session")
-async def run_assessment_session(
-    message: str,
-    current_step: str = "interest_harvest",
-    *,
-    runtime: InjectedLearnerRuntime,
-) -> str:
-    """Run onboarding and placement interactions through the assessment team."""
-    context = _get_runtime_context(runtime)
-    if context is None:
-        return MISSING_LEARNER_CONTEXT_MESSAGE
-
-    learner_id = context.learner_id
-    session_id = context.session_id
-
-    result = await asyncio.to_thread(
-        lambda: cast(Any, assessment_team).invoke(
-            input={
-                "messages": [{"role": "user", "content": message}],
-                "current_step": current_step,
-            },
-            config={"configurable": {"thread_id": f"assessment_{session_id}"}},
-            context=LearnerContext(learner_id=learner_id, session_id=session_id),
-        )
-    )
-
-    session = session_manager.get_active_session(
-        learner_id=learner_id,
-        session_id=session_id,
-    )
-    current_step_result = result.get("current_step")
-    if session is not None:
-        if session.phase == SessionPhase.ONBOARDING and current_step_result == "placement":
-            await session_manager.post_onboarding(session)
-        elif current_step_result == "complete":
-            placement_results = result.get("placement_results", {})
-            if isinstance(placement_results, dict) and placement_results:
-                await session_manager.post_placement(session, placement_results)
-
-    messages = result.get("messages", [])
-    if messages:
-        last = messages[-1]
-        return last.content if hasattr(last, "content") else str(last)
-    return "Assessment session active."
-
-
-@tool("wrap_up_session")
-async def wrap_up_session(runtime: InjectedLearnerRuntime) -> str:
-    """End the current learning session and save progress."""
-    context = _get_runtime_context(runtime)
-    if context is None:
-        return MISSING_LEARNER_CONTEXT_MESSAGE
-
-    learner_id = context.learner_id
-    session_id = context.session_id
-
-    session = session_manager.get_active_session(
-        learner_id=learner_id,
-        session_id=session_id,
-    )
-    if session is None:
-        return "No active session found to wrap up."
-
-    summary = await session_manager.wrap_up(session)
-    next_up = summary.get("next_up", [])
-    next_preview = ""
-    if next_up:
-        next_preview = "\n\nComing up next:\n" + "\n".join(
-            f"  → {n['skill_id']} step {n['step']}: {n.get('description', '')}"
-            for n in next_up
-        )
-
-    return (
-        "Session complete!\n"
-        f"Duration: {summary.get('duration_minutes', 0)} minutes\n"
-        f"Items completed: {summary.get('items_completed', 0)}\n"
-        f"Skills mastered (total): {summary.get('skills_mastered_total', 0)}\n"
-        f"Competencies practiced: {', '.join(summary.get('competency_focus', []))}"
-        f"{next_preview}"
-    )
-
-
-# -----------------------------------------------------------------------------
-# Subagents
-# -----------------------------------------------------------------------------
-
-LEARNING_SYSTEM_PROMPT = """You are the Praxis Learning Subagent.
-
-You handle only learning-session work: onboarding, placement, coaching, practice,
-scaffolding, progress checks, and session wrap-up.
-
-PRINCIPLES:
-1. Personalize every interaction to the learner's interests, level, and goals.
-2. Assessment is stealth: the learner should not feel tested.
-3. Employment readiness is structural and woven into learning, not a separate module.
-4. Scaffolding follows ABA principles with systematic prompt fading.
-5. Never serve unvalidated curriculum content.
-6. Keep the tone adult-appropriate, warm, direct, and practical.
-
-FLOW:
-- Use start_learning_session for explicit learning, onboarding, placement, practice,
-  lesson, or progress-tracked requests.
-- For onboarding, collect interests, learning preferences, and goals conversationally.
-- Use assessment_session for onboarding and placement.
-- For placement, run adaptive assessment lightly and keep it short.
-- For learning, use coaching_session to deliver the lesson.
-- At session end, use wrap_up_session.
-
-BOUNDARIES:
-- Do not handle resumes, job searches, cover letters, public resource searches,
-  food, shelter, housing, legal aid, clinics, or general site navigation.
-- If the user asks for those, return a concise handoff note so the supervisor can
-  route to the correct subagent.
-"""
-
-learning_subagent: SubAgent = {
-    "name": LEARNING_AGENT_NAME,
-    "description": (
-        "Handles learner onboarding, placement assessment, adaptive lessons, "
-        "coaching, scaffolded practice, progress tracking, and session wrap-up."
-    ),
-    "system_prompt": LEARNING_SYSTEM_PROMPT,
-    "tools": [
-        start_learning_session,
-        run_assessment_session,
-        run_coaching_session,
-        wrap_up_session,
-    ],
-    "model": init_praxis_chat_model(ORCHESTRATOR_MODEL),
-    "middleware": cast(
-        Any,
-        [
-            SafeCopilotKitMiddleware(),
-            EmploymentStructuralMiddleware(),
-            MicroThemingMiddleware(),
-            ZPDMiddleware(),
-            StealthAssessmentMiddleware(),
-        ],
-    ),
-}
-
-fyndr_tools: list[Any] = [
+resource_tools: list[Any] = [
     recommend_assistance,
     find_agencies,
     filter_agencies,
     save_agencies,
 ]
-if web_search_tool is not None:
-    fyndr_tools.append(web_search_tool)
 
-fyndr_agent: SubAgent = {
-    "name": "access_fyndr",
-    "description": (
-        "Specialist for finding housing, food, legal aid, SNAP, utilities, "
-        "medical, DV, and other local/community resources."
-    ),
-    "system_prompt": (
-        "You are Fyndr, a practical case-work resource specialist.\n\n"
-        "DECISION TREE:\n"
-        "1. If the user describes a stressful life situation such as lost job, "
-        "can't afford food, eviction, no power, DV, or medical need, first call "
-        "recommend_assistance with the matching key: food_insecurity, lost_job, "
-        "eviction_risk, domestic_violence, utilities, or medical.\n"
-        "2. Then call find_agencies with the suggested search_query plus the "
-        "user's location when available.\n"
-        "3. If the user is simply filtering, such as 'food pantries near me' or "
-        "'legal aid in 97401', call filter_agencies directly.\n"
-        "4. If the location is outside Lane County, Oregon, use web search if "
-        "available and then save_agencies to populate the map.\n\n"
-        "Always summarize results with name, distance when known, fees, language "
-        "support when known, and what the agency offers."
-    ),
-    "tools": fyndr_tools,
-    "model": ROUTING_MODEL,
-    "middleware": cast(Any, [SafeCopilotKitMiddleware()]),
-}
-
-career_tools: list[Any] = [update_career_state, switch_career_view]
-if web_search_tool is not None:
-    career_tools.append(web_search_tool)
-
-career_agent: SubAgent = {
-    "name": "access_career",
-    "description": "Specialist for jobs, resumes, cover letters, and interview preparation.",
-    "system_prompt": """
-You are AccessCareer.
-
-1. JOB SEARCH:
-   - Use web search when available to find jobs.
-   - Parse results into objects: {title, company, location, description, url, salary}.
-   - Call update_career_state to set job_listings and career_view='jobs'.
-
-2. RESUME:
-   - Write or edit ATS-friendly resume markdown using only user-provided facts.
-   - Call update_career_state to set resume_markdown and career_view='resume'.
-
-3. COVER LETTER:
-   - Write cover letter markdown using only user-provided facts plus the target job.
-   - Call update_career_state to set cover_letter_markdown and career_view='cover_letter'.
-
-4. INTERVIEW PREP:
-   - Give direct practice, strong examples, and concise coaching.
-
-Never invent employers, dates, certifications, salaries, degrees, or equipment experience.
-Always update the relevant state keys when producing career artifacts.
-""",
-    "tools": career_tools,
-    "model": REPLY_MODEL,
-    "middleware": cast(Any, [SafeCopilotKitMiddleware()]),
-}
-
-
-SUPERVISOR_SYSTEM_PROMPT = """You are the Praxis Supervisor.
-
-You are a fast router and light responder. The frontend sees only you, but you
-should delegate real work to the correct subagent.
-
-ROUTING:
-- Learning, GED, lesson, assessment, placement, onboarding, practice, quiz,
-  progress, coaching, skill mastery -> delegate to learning.
-- Jobs, resume, cover letter, interview, applications, career planning ->
-  delegate to access_career and navigate to the career page when useful.
-- Food, shelter, housing, eviction, legal aid, SNAP, utilities, medical, DV,
-  clinics, local resources -> delegate to access_fyndr and navigate to AccessFyndr
-  or the map/resources page when useful.
-- show map, donate, about, home, dashboard, career, learning -> use navigate_to_page.
-- General questions -> answer briefly yourself.
-
-Keep routing invisible. Do not explain the internal agent architecture to users.
-Do not run learning middleware logic at the supervisor level.
-"""
-
-
-def build_supervisor_graph():
-    supervisor_tools: list[Any] = [navigate_to_page]
-    if web_search_tool is not None:
-        supervisor_tools.append(web_search_tool)
-
-    return create_deep_agent(
-        name=ORCHESTRATOR_AGENT_NAME,
-        model=ROUTING_MODEL,
-        tools=supervisor_tools,
-        subagents=[learning_subagent, career_agent, fyndr_agent],
-        middleware=cast(Any, [SafeCopilotKitMiddleware()]),
-        system_prompt=SUPERVISOR_SYSTEM_PROMPT,
-        checkpointer=checkpointer,
-        backend=backend_factory,
-    )
-
-
-supervisor_graph = build_supervisor_graph()
+supervisor_graph = build_praxis_supervisor(
+    name=ORCHESTRATOR_AGENT_NAME,
+    learning_name=LEARNING_AGENT_NAME,
+    routing_model=ROUTING_MODEL,
+    learning_model=ORCHESTRATOR_MODEL,
+    career_model=REPLY_MODEL,
+    assessment_team=assessment_team,
+    coaching_team=coaching_team,
+    session_manager=session_manager,
+    gamification_engine=gamification_engine,
+    navigate_to_page=navigate_to_page,
+    resource_tools=resource_tools,
+    web_search_tool=web_search_tool,
+    safe_middleware_factory=SafeCopilotKitMiddleware,
+    checkpointer=checkpointer,
+    backend_factory=backend_factory,
+)
 
 
 # -----------------------------------------------------------------------------

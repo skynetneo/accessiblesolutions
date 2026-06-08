@@ -26,6 +26,9 @@ def save_resume_version(
     """
     store = runtime.store
     user_id = runtime.context.learner_id
+
+    if store is None:
+        return "Storage is unavailable; resume version was not saved."
     
     version_id = f"v_{int(time.time())}"
     
@@ -58,8 +61,8 @@ def search_jobs(
     query: str,
     location: str,
     salary_min: int,
+    runtime: ToolRuntime[LearnerContext],
     job_type: str = "any",
-    runtime: ToolRuntime[LearnerContext] = None
 ) -> str:
     """Search for real job listings matching criteria.
     
@@ -87,7 +90,7 @@ def search_jobs(
 def analyze_job_fit(
     job_description: str,
     job_title: str,
-    runtime: ToolRuntime[LearnerContext] = None
+    runtime: ToolRuntime[LearnerContext]
 ) -> str:
     """Compare a specific job posting against the learner's actual profile.
     
@@ -120,6 +123,9 @@ def save_job_research(
     """
     store = runtime.store
     user_id = runtime.context.learner_id
+
+    if store is None:
+        return "Storage is unavailable; research was not saved."
     
     research_id = f"research_{int(time.time())}"
     store.put(

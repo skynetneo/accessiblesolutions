@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 from typing import Callable
+from typing import Any, cast
 from typing_extensions import NotRequired
 
 from langchain.agents import AgentState, create_agent
@@ -45,7 +46,7 @@ from langchain.agents.middleware import (
     ModelResponse,
 )
 from langchain.tools import tool, ToolRuntime
-from langchain.messages import ToolMessage
+from langchain.messages import ToolMessage, SystemMessage
 from langgraph.types import Command
 
 from db.client import db
@@ -113,7 +114,7 @@ def lookup_seed(
         .maybe_single() \
         .execute()
 
-    seed = result.data if result else None
+    seed = cast(dict[str, Any] | None, result.data if result else None)
     if not seed:
         return Command(update={
             "messages": [ToolMessage(
@@ -157,8 +158,11 @@ def check_cache(
         .execute()
 
     if result and result.data:
-        seed = runtime.state.get("current_seed", {})
-        cached_item = {**seed, **result.data}
+        seed = runtime.state.get("current_seed")
+        cached_item = {
+            **(seed if isinstance(seed, dict) else {}),
+            **(result.data if isinstance(result.data, dict) else {}),
+        }
         return Command(update={
             "messages": [ToolMessage(
                 content="CACHE_HIT: cached item loaded. Call deliver_item.",
@@ -201,7 +205,8 @@ def generate_themed_item(
         .maybe_single() \
         .execute()
 
-    profile = profile_result.data if profile_result else {}
+    profile_data = profile_result.data if profile_result else None
+    profile = profile_data if isinstance(profile_data, dict) else {}
     interests = profile.get("interests", [])
     active_interest = interests[0] if isinstance(interests, list) and interests else "everyday life"
 
@@ -216,7 +221,7 @@ def generate_themed_item(
         "- Weave in workplace vocabulary naturally\n"
         "- Match the stated difficulty level\n"
         "- Include scaffold_level (integer 1-5) from the seed\n"
-        "  1=full_model, 2=partial_model, 3=verbal, 4=gestural, 5=independent\n"
+        "  1=full_model, 2=partial_model, 3=verbal, 4=positional, 5=independent\n"
         "- Output valid JSON with keys: question_text, choices, correct_answer, explanation, scaffold_level\n\n"
         "SEED ITEM:\n"
         f"{json.dumps(seed, indent=2)}\n\n"
@@ -229,7 +234,19 @@ def generate_themed_item(
 
     # Parse the generated item
     try:
-        content = result.content.strip()
+        raw_content = result.content
+        if isinstance(raw_content, list):
+            parts: list[str] = []
+            for part in raw_content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict):
+                    text_part = part.get("text")
+                    if isinstance(text_part, str):
+                        parts.append(text_part)
+            content = "\n".join(parts).strip()
+        else:
+            content = str(raw_content).strip()
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):
@@ -237,7 +254,7 @@ def generate_themed_item(
         generated = json.loads(content)
     except (json.JSONDecodeError, IndexError):
         generated = {
-            "question_text": result.content,
+            "question_text": str(result.content),
             "choices": seed.get("choices", []),
             "correct_answer": seed.get("correct_answer", ""),
             "explanation": "",
@@ -390,19 +407,21 @@ def _cache_item(learner_id: str, item: dict):
 # Middleware (cache-optimized prompt: static first, no dynamic vars)
 # ──────────────────────────────────────────────────────────────
 
-CONTENT_SYSTEM_PROMPT = (
-    "You are the content generation orchestrator. Your job is to produce "
-    "a single validated, themed learning item from a seed.\n\n"
-    "PIPELINE (follow in order):\n"
-    "1. lookup_seed — load the seed for the requested skill/step\n"
-    "2. check_cache — see if a valid cached item exists "
-    "(scoped to runtime.context.learner_id)\n"
-    "3. If cache hit: check_cache loads the cached item; call deliver_item\n"
-    "4. If cache miss: call generate_themed_item\n"
-    "5. Call validate_item (handles regeneration automatically)\n"
-    "6. Call deliver_item to return the final content\n\n"
-    "Do NOT deviate from this pipeline. Do NOT generate content yourself — "
-    "use the tools. The tools handle cross-provider validation internally."
+CONTENT_SYSTEM_PROMPT = SystemMessage(
+    content=(
+        "You are the content generation orchestrator. Your job is to produce "
+        "a single validated, themed learning item from a seed.\n\n"
+        "PIPELINE (follow in order):\n"
+        "1. lookup_seed — load the seed for the requested skill/step\n"
+        "2. check_cache — see if a valid cached item exists "
+        "(scoped to runtime.context.learner_id)\n"
+        "3. If cache hit: check_cache loads the cached item; call deliver_item\n"
+        "4. If cache miss: call generate_themed_item\n"
+        "5. Call validate_item (handles regeneration automatically)\n"
+        "6. Call deliver_item to return the final content\n\n"
+        "Do NOT deviate from this pipeline. Do NOT generate content yourself — "
+        "use the tools. The tools handle cross-provider validation internally."
+    )
 )
 
 
@@ -411,7 +430,7 @@ def apply_content_config(
     request: ModelRequest,
     handler: Callable[[ModelRequest], ModelResponse],
 ) -> ModelResponse:
-    return handler(request.override(system_prompt=CONTENT_SYSTEM_PROMPT))
+    return handler(request.override(system_message=CONTENT_SYSTEM_PROMPT))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -436,6 +455,6 @@ def build_content_team(checkpointer=None, model: str = DEFAULT_BASE_MODEL):
         ],
         state_schema=ContentState,
         context_schema=LearnerContext,
-        middleware=[apply_content_config],
+        middleware=cast(Any, [apply_content_config]),
         checkpointer=checkpointer,
     )

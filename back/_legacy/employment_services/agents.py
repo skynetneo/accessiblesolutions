@@ -8,6 +8,7 @@ OpenAI models have been replaced with Gemini/Anthropic per ethical constraints.
 
 from deepagents import create_deep_agent
 from langchain.tools import tool
+from typing import Any, cast
 
 # Import core data tools from the bridge
 from db.tools_bridge import (
@@ -129,7 +130,7 @@ resume_subagent = {
     "name": "resume-builder",
     "description": "Builds and iterates on the learner's resume and cover letters.",
     "system_prompt": STATIC_RESUME_PROMPT,
-    "model": "anthropic:claude-sonnet-4-6",
+    "model": "deepseek:deepseek-v4-flash",
     "tools": [get_work_profile, get_competency_profile, save_resume_version],
 }
 
@@ -137,7 +138,7 @@ interview_subagent = {
     "name": "interview-coach",
     "description": "Runs mock interview simulations using the learner's actual skills.",
     "system_prompt": STATIC_INTERVIEW_PROMPT,
-    "model": "google:gemini-3-flash",
+    "model": "google:gemini-flash-lite-latest",
     "tools": [get_work_profile, get_competency_profile, log_stealth_observation, update_competency_score],
 }
 
@@ -145,7 +146,7 @@ job_researcher_subagent = {
     "name": "job-researcher",
     "description": "Researches real job opportunities based on the learner's actual profile.",
     "system_prompt": STATIC_RESEARCHER_PROMPT,
-    "model": "google:gemini-3-flash",
+    "model": "zai:glm-4.5-air",
     "tools": [get_work_profile, get_competency_profile, search_jobs, analyze_job_fit, save_job_research],
 }
 
@@ -160,17 +161,18 @@ def build_employment_services_team(store, checkpointer):
     
     @tool("run_intake", description="Run the employment profile intake flow.")
     def run_intake_tool(query: str):
-        result = intake_agent.invoke({
+        intake_input = {
             "messages": [{"role": "user", "content": query}],
             "current_step": "entry",
-        })
+        }
+        result = intake_agent.invoke(cast(Any, intake_input))
         return result["messages"][-1].content
 
     return create_deep_agent(
         name="employment-services",
         model="anthropic:claude-sonnet-4-6",
         tools=[run_intake_tool, get_work_profile],
-        subagents=[resume_subagent, interview_subagent, job_researcher_subagent],
+        subagents=cast(Any, [resume_subagent, interview_subagent, job_researcher_subagent]),
         system_prompt=STATIC_SUPERVISOR_PROMPT,
         middleware=[MicroThemingMiddleware()], 
         store=store,
